@@ -1,65 +1,156 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import styles from './page.module.css';
+
+type Media = {
+  id: string; // ID do Google Drive
+  name: string;
+  url: string;
+  type: 'video' | 'image';
+  withAudio: boolean;
+};
+
+const REFRESH_INTERVAL_MS = 10000; // 10 segundos para checar novas mídias
 
 export default function Home() {
+  const [playlist, setPlaylist] = useState<Media[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isStarted, setIsStarted] = useState(true); 
+  const [showUnmuteHint, setShowUnmuteHint] = useState(false);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const nextVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    fetchPlaylist();
+    const interval = setInterval(fetchPlaylist, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchPlaylist = async () => {
+    try {
+      const res = await fetch('/api/media');
+      const data = await res.json();
+      if (data.files) {
+        // Só atualiza se houver mudança real na lista para evitar "pulo" de vídeo
+        setPlaylist(prev => {
+           if (JSON.stringify(prev) !== JSON.stringify(data.files)) {
+             return data.files;
+           }
+           return prev;
+        });
+      }
+    } catch (e) {
+      console.error('Falha ao buscar playlist', e);
+    }
+  };
+
+  const nextMedia = () => {
+    setCurrentIndex((prev) => (prev + 1) % playlist.length);
+  };
+
+  useEffect(() => {
+    if (playlist.length === 0) return;
+
+    const currentMedia = playlist[currentIndex];
+    
+    if (currentMedia.type === 'image') {
+      const timer = setTimeout(nextMedia, 7000); // 7 seg para imagens
+      return () => clearTimeout(timer);
+    } else if (currentMedia.type === 'video') {
+      if (videoRef.current) {
+         videoRef.current.currentTime = 0;
+         videoRef.current.muted = !currentMedia.withAudio;
+         
+         const playPromise = videoRef.current.play();
+         if (playPromise !== undefined) {
+           playPromise.catch(e => {
+             console.log("Autoplay bloqueado. Tentando mudo...", e);
+             if (videoRef.current) {
+                videoRef.current.muted = true;
+                setShowUnmuteHint(true);
+                videoRef.current.play().catch(err => {
+                    console.error("Falha fatal no video. Pulando...", err);
+                    nextMedia();
+                });
+             }
+           });
+         }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, playlist.length, isStarted]);
+
+  // Função para "desbloquear" o som globalmente ao clicar
+  const unlockAudio = () => {
+    if (videoRef.current) {
+        videoRef.current.muted = !playlist[currentIndex]?.withAudio;
+        setShowUnmuteHint(false);
+    }
+  };
+
+  if (playlist.length === 0) {
+    return (
+      <div className="fullscreen-container" style={{ background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+        <p>Aguardando mídias...</p>
+      </div>
+    );
+  }
+
+  // Preloader para a Próxima Mídia (fica escondida)
+  const nextMediaItem = playlist[(currentIndex + 1) % playlist.length];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="fullscreen-container" style={{ background: '#000', overflow: 'hidden' }} onClick={unlockAudio}>
+      {playlist.map((media, index) => {
+        const isActive = index === currentIndex;
+        // Usamos a nossa rota de STREAM interna para garantir que o vídeo rode sem avisos de vírus do Google
+        const streamUrl = `/api/stream?id=${media.id}`;
+        
+        return (
+          <div key={media.id} className={`fullscreen-media ${isActive ? 'active' : ''}`}>
+            {media.type === 'video' ? (
+              <>
+                 <video src={streamUrl} className="media-bg" muted playsInline />
+                 <video
+                    ref={isActive ? videoRef : null}
+                    src={streamUrl}
+                    className="media-fg"
+                    onEnded={nextMedia}
+                    muted={!media.withAudio}
+                    playsInline
+                    preload="auto"
+                    onError={(e) => {
+                        console.error("Erro no video do Drive. Pulando...", e);
+                        nextMedia();
+                    }}
+                 />
+              </>
+            ) : (
+              <>
+                <img src={`/api/stream?id=${media.id}`} className="media-bg" alt="" />
+                <img src={`/api/stream?id=${media.id}`} className="media-fg" alt={media.name} />
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Camada Invisível de Pré-carregamento do Próximo Item */}
+      <div style={{ display: 'none' }}>
+        {nextMediaItem.type === 'video' ? (
+            <video src={`/api/stream?id=${nextMediaItem.id}`} preload="auto" muted />
+        ) : (
+            <img src={`/api/stream?id=${nextMediaItem.id}`} alt="" />
+        )}
+      </div>
+
+      {showUnmuteHint && (
+          <div style={{ position: 'absolute', bottom: 20, right: 20, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px 20px', borderRadius: '30px', fontSize: '0.9rem', zIndex: 10000, pointerEvents: 'none', animation: 'pulse 2s infinite' }}>
+              🔇 Clique para ativar o som
+          </div>
+      )}
     </div>
   );
 }

@@ -4,11 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "network": "node scripts/get-ip.js && next dev -H 0.0.0.0",
+    "start-network": "node scripts/get-ip.js && next start -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "googleapis": "^171.4.0",
+    "lucide-react": "^1.7.0",
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"

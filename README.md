@@ -1,3 +1,5 @@
+# 📹 Visualizador de Vídeo
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -14,7 +16,22 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) for local access.
+
+### 🌐 Local Network Access (TVs, other PCs)
+
+To access the system from other devices on your home/work network:
+
+1. **Run the network command:**
+
+   ```bash
+   npm run network
+   ```
+
+2. **On your device (PC or Smart TV), open the browser and go to:**
+   `http://10.1.1.16:3000`
+
+> **Note:** Ensure your machine's firewall allows traffic on port `3000`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

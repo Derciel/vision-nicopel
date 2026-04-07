@@ -23,6 +23,11 @@
 # misc
 .DS_Store
 *.pem
+google-service-account.json
+
+# uploads locais (mídias não devem ir pro repositório)
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # debug
 npm-debug.log*
@@ -30,8 +35,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.local
+.env.*.local
+# .env.example é commitado intencionalmente como template
 
 # vercel
 .vercel
