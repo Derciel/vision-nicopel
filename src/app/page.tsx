@@ -16,7 +16,6 @@ const REFRESH_INTERVAL_MS = 10000; // 10 segundos para checar novas mídias
 export default function Home() {
   const [playlist, setPlaylist] = useState<Media[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isStarted, setIsStarted] = useState(true); 
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,11 +55,12 @@ export default function Home() {
     const currentMedia = playlist[currentIndex];
     
     if (currentMedia.type === 'image') {
-      const timer = setTimeout(nextMedia, 7000); // 7 seg para imagens
+      const timer = setTimeout(nextMedia, 7000);
       return () => clearTimeout(timer);
     } else if (currentMedia.type === 'video') {
       if (videoRef.current) {
          videoRef.current.currentTime = 0;
+         // Forçar via DOM diretamente — React não atualiza muted via prop após mount
          videoRef.current.muted = !currentMedia.withAudio;
          
          const playPromise = videoRef.current.play();
@@ -69,7 +69,7 @@ export default function Home() {
              console.log("Autoplay bloqueado. Tentando mudo...", e);
              if (videoRef.current) {
                 videoRef.current.muted = true;
-                setShowUnmuteHint(true);
+                setShowUnmuteHint(currentMedia.withAudio); // só mostra hint se o vídeo deveria ter som
                 videoRef.current.play().catch(err => {
                     console.error("Falha fatal no video. Pulando...", err);
                     nextMedia();
@@ -80,13 +80,15 @@ export default function Home() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, playlist.length, isStarted]);
+  }, [currentIndex, playlist]);
 
   // Função para "desbloquear" o som globalmente ao clicar
   const unlockAudio = () => {
     if (videoRef.current) {
-        videoRef.current.muted = !playlist[currentIndex]?.withAudio;
+        const currentMedia = playlist[currentIndex];
+        videoRef.current.muted = !currentMedia?.withAudio;
         setShowUnmuteHint(false);
+        videoRef.current.play().catch(() => {});
     }
   };
 
@@ -118,7 +120,7 @@ export default function Home() {
                     src={streamUrl}
                     className="media-fg"
                     onEnded={nextMedia}
-                    muted={!media.withAudio}
+                    muted
                     playsInline
                     preload="auto"
                     onError={(e) => {
