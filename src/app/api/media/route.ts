@@ -13,12 +13,12 @@ export async function GET() {
       orderBy: 'createdTime desc',
     });
 
-    const files = response.data.files || [];
-    const mediaFiles = files.filter(file => {
+    const files: any[] = response.data.files || [];
+    const mediaFiles = files.filter((file: any) => {
       const ext = path.extname(file.name).toLowerCase();
       // Filtrar arquivos com base nas extensões suportadas
       return ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm', '.webp', '.avif', '.jfif', '.heic', '.bmp', '.mov'].includes(ext);
-    }).map(file => {
+    }).map((file: any) => {
       const isVideo = ['.mp4', '.webm', '.mov'].includes(path.extname(file.name).toLowerCase());
       const withAudio = file.name.includes('__audio_on__'); 
       
