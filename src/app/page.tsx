@@ -11,7 +11,8 @@ type Media = {
   withAudio: boolean;
 };
 
-const REFRESH_INTERVAL_MS = 10000; // 10 segundos para checar novas mídias
+const REFRESH_INTERVAL_MS = 10000;
+const MEDIA_DURATION_MS = 7000; // 7 segundos para qualquer mídia
 
 export default function Home() {
   const [playlist, setPlaylist] = useState<Media[]>([]);
@@ -19,7 +20,6 @@ export default function Home() {
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
-  const nextVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     fetchPlaylist();
@@ -53,30 +53,27 @@ export default function Home() {
     if (playlist.length === 0) return;
 
     const currentMedia = playlist[currentIndex];
-    
+
+    // Imagens: 7 segundos fixos
     if (currentMedia.type === 'image') {
-      const timer = setTimeout(nextMedia, 7000);
+      const timer = setTimeout(nextMedia, MEDIA_DURATION_MS);
       return () => clearTimeout(timer);
-    } else if (currentMedia.type === 'video') {
-      if (videoRef.current) {
-         videoRef.current.currentTime = 0;
-         // Forçar via DOM diretamente — React não atualiza muted via prop após mount
-         videoRef.current.muted = !currentMedia.withAudio;
-         
-         const playPromise = videoRef.current.play();
-         if (playPromise !== undefined) {
-           playPromise.catch(e => {
-             console.log("Autoplay bloqueado. Tentando mudo...", e);
-             if (videoRef.current) {
-                videoRef.current.muted = true;
-                setShowUnmuteHint(currentMedia.withAudio); // só mostra hint se o vídeo deveria ter som
-                videoRef.current.play().catch(err => {
-                    console.error("Falha fatal no video. Pulando...", err);
-                    nextMedia();
-                });
-             }
-           });
-         }
+    }
+
+    // Vídeos: avança no onEnded, só controla play/mute aqui
+    if (currentMedia.type === 'video' && videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.muted = !currentMedia.withAudio;
+
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setShowUnmuteHint(currentMedia.withAudio);
+            videoRef.current.play().catch(() => {});
+          }
+        });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,14 +116,11 @@ export default function Home() {
                     ref={isActive ? videoRef : null}
                     src={streamUrl}
                     className="media-fg"
-                    onEnded={nextMedia}
                     muted
                     playsInline
                     preload="auto"
-                    onError={(e) => {
-                        console.error("Erro no video do Drive. Pulando...", e);
-                        nextMedia();
-                    }}
+                    onEnded={nextMedia}
+                    onError={() => nextMedia()}
                  />
               </>
             ) : (
