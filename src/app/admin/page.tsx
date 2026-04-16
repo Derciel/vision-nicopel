@@ -12,12 +12,11 @@ type Media = {
   createdAt: number;
 };
 
-
 export default function AdminPage() {
   const [mediaList, setMediaList] = useState<Media[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [browserProgress, setBrowserProgress] = useState(0);  // browser → servidor
-  const [driveProgress, setDriveProgress] = useState(0);       // servidor → Drive
+  const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState('');
   const [error, setError] = useState('');
   const [withAudio, setWithAudio] = useState(false);
 
@@ -41,24 +40,22 @@ export default function AdminPage() {
     e.target.value = '';
 
     setUploading(true);
-    setBrowserProgress(0);
-    setDriveProgress(0);
+    setProgress(0);
     setError('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('withAudio', withAudio.toString());
+    setStatusMsg('Enviando arquivo...');
 
     const xhr = new XMLHttpRequest();
 
-    // Progresso real: browser → servidor
+    // Progresso real: browser → servidor → Drive (tudo em um pipeline)
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) {
         const pct = Math.round((event.loaded / event.total) * 100);
-        setBrowserProgress(pct);
-        // Drive progress acompanha o browser (não temos callback server-side via XHR)
-        // Quando chegar a 100% no browser, o servidor ainda está enviando ao Drive
-        setDriveProgress(Math.max(0, pct - 5));
+        setProgress(pct);
+        if (pct < 100) {
+          setStatusMsg(`Enviando... ${pct}%`);
+        } else {
+          setStatusMsg('Processando no Google Drive...');
+        }
       }
     });
 
@@ -68,8 +65,8 @@ export default function AdminPage() {
         try {
           const data = JSON.parse(xhr.responseText);
           if (data.success) {
-            setBrowserProgress(100);
-            setDriveProgress(100);
+            setProgress(100);
+            setStatusMsg('');
             fetchMedia();
           } else {
             setError(data.error || 'Erro no upload');
@@ -92,8 +89,14 @@ export default function AdminPage() {
       setError('Falha de conexão durante o upload');
     });
 
+    // Enviar arquivo como stream puro — sem FormData, sem buffer
+    // Metadados vão nos headers para o servidor não precisar parsear multipart
     xhr.open('POST', '/api/upload');
-    xhr.send(formData);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
+    xhr.setRequestHeader('x-file-size', String(file.size));
+    xhr.setRequestHeader('x-with-audio', withAudio ? 'true' : 'false');
+    xhr.send(file); // envia o File diretamente como stream
   };
 
   const handleDelete = async (media: Media) => {
@@ -148,42 +151,22 @@ export default function AdminPage() {
         />
 
         {uploading && (
-          <div style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-            {/* Barra 1: Browser → Servidor */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem', opacity: 0.7 }}>
-                <span>📤 Enviando para o servidor</span>
-                <span>{browserProgress}%</span>
-              </div>
-              <div style={{ width: '100%', height: '7px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${browserProgress}%`,
-                  background: 'linear-gradient(90deg, #6b4cff, #a78bfa)',
-                  borderRadius: '99px',
-                  transition: 'width 0.2s ease',
-                }} />
-              </div>
+          <div style={{ width: '100%', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.82rem', opacity: 0.75 }}>
+              <span>{statusMsg}</span>
+              <span>{progress}%</span>
             </div>
-
-            {/* Barra 2: Servidor → Google Drive */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem', opacity: 0.7 }}>
-                <span>☁️ Salvando no Google Drive</span>
-                <span>{driveProgress}%</span>
-              </div>
-              <div style={{ width: '100%', height: '7px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${driveProgress}%`,
-                  background: 'linear-gradient(90deg, #059669, #34d399)',
-                  borderRadius: '99px',
-                  transition: 'width 0.2s ease',
-                }} />
-              </div>
+            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${progress}%`,
+                background: progress < 100
+                  ? 'linear-gradient(90deg, #6b4cff, #a78bfa)'
+                  : 'linear-gradient(90deg, #059669, #34d399)',
+                borderRadius: '99px',
+                transition: 'width 0.2s ease, background 0.5s ease',
+              }} />
             </div>
-
           </div>
         )}
       </div>
