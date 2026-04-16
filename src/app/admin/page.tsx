@@ -12,7 +12,6 @@ type Media = {
   createdAt: number;
 };
 
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB por chunk — máximo de RAM usado no servidor
 
 export default function AdminPage() {
   const [mediaList, setMediaList] = useState<Media[]>([]);
@@ -36,7 +35,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     e.target.value = '';
@@ -46,73 +45,55 @@ export default function AdminPage() {
     setDriveProgress(0);
     setError('');
 
-    try {
-      // Etapa 1: iniciar sessão resumable no Drive (só metadados)
-      const initRes = await fetch('/api/upload/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          fileSize: file.size,
-          withAudio,
-        }),
-      });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('withAudio', withAudio.toString());
 
-      const initData = await initRes.json();
-      if (!initRes.ok || !initData.sessionId) {
-        setError(initData.error || 'Falha ao iniciar upload');
-        setUploading(false);
-        return;
+    const xhr = new XMLHttpRequest();
+
+    // Progresso real: browser → servidor
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const pct = Math.round((event.loaded / event.total) * 100);
+        setBrowserProgress(pct);
+        // Drive progress acompanha o browser (não temos callback server-side via XHR)
+        // Quando chegar a 100% no browser, o servidor ainda está enviando ao Drive
+        setDriveProgress(Math.max(0, pct - 5));
       }
+    });
 
-      const { sessionId } = initData;
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-      // Etapa 2: enviar chunks um a um
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE - 1, file.size - 1);
-        const chunk = file.slice(start, end + 1);
-
-        // Progresso do browser (leitura local do arquivo)
-        setBrowserProgress(Math.round(((i + 1) / totalChunks) * 100));
-
-        const chunkRes = await fetch('/api/upload/chunk', {
-          method: 'POST',
-          headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-            'x-session-id': sessionId,
-            'x-chunk-start': String(start),
-            'x-chunk-end': String(end),
-            'x-total-size': String(file.size),
-          },
-          body: chunk,
-        });
-
-        const chunkData = await chunkRes.json();
-
-        if (!chunkRes.ok || chunkData.error) {
-          setError(chunkData.error || `Erro no chunk ${i + 1}`);
-          setUploading(false);
-          return;
-        }
-
-        // Progresso do Drive (confirmado pelo servidor)
-        const driveBytes = chunkData.done ? file.size : (chunkData.nextByte ?? end + 1);
-        setDriveProgress(Math.round((driveBytes / file.size) * 100));
-
-        if (chunkData.done) {
-          setUploading(false);
-          fetchMedia();
-          return;
-        }
-      }
-    } catch (err: any) {
-      console.error('Erro no upload:', err);
-      setError('Falha de conexão durante o upload');
+    xhr.addEventListener('load', () => {
       setUploading(false);
-    }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            setBrowserProgress(100);
+            setDriveProgress(100);
+            fetchMedia();
+          } else {
+            setError(data.error || 'Erro no upload');
+          }
+        } catch {
+          setError('Resposta inválida do servidor');
+        }
+      } else {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          setError(data.error || `Erro ${xhr.status}`);
+        } catch {
+          setError(`Erro ${xhr.status} no upload`);
+        }
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      setUploading(false);
+      setError('Falha de conexão durante o upload');
+    });
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
   };
 
   const handleDelete = async (media: Media) => {
