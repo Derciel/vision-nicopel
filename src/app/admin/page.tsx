@@ -60,13 +60,13 @@ export default function AdminPage() {
       });
 
       const initData = await initRes.json();
-      if (!initRes.ok || !initData.uploadUrl) {
+      if (!initRes.ok || !initData.sessionId) {
         setError(initData.error || 'Falha ao iniciar upload');
         setUploading(false);
         return;
       }
 
-      const { uploadUrl } = initData;
+      const { sessionId } = initData;
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
       // Etapa 2: enviar chunks um a um
@@ -82,7 +82,7 @@ export default function AdminPage() {
           method: 'POST',
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
-            'x-upload-url': uploadUrl,
+            'x-session-id': sessionId,
             'x-chunk-start': String(start),
             'x-chunk-end': String(end),
             'x-total-size': String(file.size),
