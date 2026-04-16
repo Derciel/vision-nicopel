@@ -12,10 +12,13 @@ type Media = {
   createdAt: number;
 };
 
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB por chunk — máximo de RAM usado no servidor
+
 export default function AdminPage() {
   const [mediaList, setMediaList] = useState<Media[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [browserProgress, setBrowserProgress] = useState(0);  // browser → servidor
+  const [driveProgress, setDriveProgress] = useState(0);       // servidor → Drive
   const [error, setError] = useState('');
   const [withAudio, setWithAudio] = useState(false);
 
@@ -33,74 +36,93 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     e.target.value = '';
 
     setUploading(true);
-    setUploadProgress(0);
+    setBrowserProgress(0);
+    setDriveProgress(0);
     setError('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('withAudio', withAudio.toString());
+    try {
+      // Etapa 1: iniciar sessão resumable no Drive (só metadados)
+      const initRes = await fetch('/api/upload/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          fileSize: file.size,
+          withAudio,
+        }),
+      });
 
-    const xhr = new XMLHttpRequest();
-
-    // Progresso real do envio (browser → servidor)
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable) {
-        const pct = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(pct);
+      const initData = await initRes.json();
+      if (!initRes.ok || !initData.uploadUrl) {
+        setError(initData.error || 'Falha ao iniciar upload');
+        setUploading(false);
+        return;
       }
-    });
 
-    xhr.addEventListener('load', () => {
-      setUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (data.success) {
-            setUploadProgress(100);
-            fetchMedia();
-          } else {
-            setError(data.error || 'Erro no upload');
-          }
-        } catch {
-          setError('Resposta inválida do servidor');
+      const { uploadUrl } = initData;
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+      // Etapa 2: enviar chunks um a um
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE - 1, file.size - 1);
+        const chunk = file.slice(start, end + 1);
+
+        // Progresso do browser (leitura local do arquivo)
+        setBrowserProgress(Math.round(((i + 1) / totalChunks) * 100));
+
+        const chunkRes = await fetch('/api/upload/chunk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-upload-url': uploadUrl,
+            'x-chunk-start': String(start),
+            'x-chunk-end': String(end),
+            'x-total-size': String(file.size),
+          },
+          body: chunk,
+        });
+
+        const chunkData = await chunkRes.json();
+
+        if (!chunkRes.ok || chunkData.error) {
+          setError(chunkData.error || `Erro no chunk ${i + 1}`);
+          setUploading(false);
+          return;
         }
-      } else {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          setError(data.error || `Erro ${xhr.status}`);
-        } catch {
-          setError(`Erro ${xhr.status} no upload`);
+
+        // Progresso do Drive (confirmado pelo servidor)
+        const driveBytes = chunkData.done ? file.size : (chunkData.nextByte ?? end + 1);
+        setDriveProgress(Math.round((driveBytes / file.size) * 100));
+
+        if (chunkData.done) {
+          setUploading(false);
+          fetchMedia();
+          return;
         }
       }
-    });
-
-    xhr.addEventListener('error', () => {
-      setUploading(false);
+    } catch (err: any) {
+      console.error('Erro no upload:', err);
       setError('Falha de conexão durante o upload');
-    });
-
-    xhr.open('POST', '/api/upload');
-    xhr.send(formData);
+      setUploading(false);
+    }
   };
 
   const handleDelete = async (media: Media) => {
     if (!confirm('Deseja excluir esta mídia permanentemente?')) return;
-
     const identifier = media.id
       ? `id=${media.id}`
       : `file=${encodeURIComponent(media.name)}`;
-
     try {
       const res = await fetch(`/api/media?${identifier}`, { method: 'DELETE' });
-      if (res.ok) {
-        setMediaList((prev) => prev.filter((m) => m.url !== media.url));
-      }
+      if (res.ok) setMediaList((prev) => prev.filter((m) => m.url !== media.url));
     } catch (e) {
       console.error('Erro ao excluir:', e);
       alert('Falha ao excluir o arquivo');
@@ -145,27 +167,42 @@ export default function AdminPage() {
         />
 
         {uploading && (
-          <div style={{ width: '100%', marginTop: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.85rem', opacity: 0.8 }}>
-              <span>Enviando para o servidor...</span>
-              <span>{uploadProgress}%</span>
-            </div>
-            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div
-                style={{
+          <div style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+            {/* Barra 1: Browser → Servidor */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem', opacity: 0.7 }}>
+                <span>📤 Enviando para o servidor</span>
+                <span>{browserProgress}%</span>
+              </div>
+              <div style={{ width: '100%', height: '7px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
+                <div style={{
                   height: '100%',
-                  width: `${uploadProgress}%`,
-                  background: 'linear-gradient(90deg, var(--accent), #a78bfa)',
+                  width: `${browserProgress}%`,
+                  background: 'linear-gradient(90deg, #6b4cff, #a78bfa)',
                   borderRadius: '99px',
-                  transition: 'width 0.3s ease',
-                }}
-              />
+                  transition: 'width 0.2s ease',
+                }} />
+              </div>
             </div>
-            {uploadProgress === 100 && (
-              <p style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '6px', textAlign: 'center' }}>
-                Processando no Google Drive...
-              </p>
-            )}
+
+            {/* Barra 2: Servidor → Google Drive */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem', opacity: 0.7 }}>
+                <span>☁️ Salvando no Google Drive</span>
+                <span>{driveProgress}%</span>
+              </div>
+              <div style={{ width: '100%', height: '7px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${driveProgress}%`,
+                  background: 'linear-gradient(90deg, #059669, #34d399)',
+                  borderRadius: '99px',
+                  transition: 'width 0.2s ease',
+                }} />
+              </div>
+            </div>
+
           </div>
         )}
       </div>
@@ -197,13 +234,11 @@ export default function AdminPage() {
                 className={styles.mediaThumbnail}
               />
             )}
-
             <div className={styles.overlay}>
               <button className={styles.deleteBtn} onClick={() => handleDelete(media)}>
                 <Trash2 size={18} /> Excluir
               </button>
             </div>
-
             <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.6)', padding: '5px 8px', borderRadius: '4px', display: 'flex', gap: '5px', fontSize: '0.8rem' }}>
               {media.type === 'video' ? <Video size={14} /> : <ImageIcon size={14} />}
               {media.type === 'video' ? 'Vídeo' : 'Imagem'}

@@ -30,8 +30,9 @@ export async function GET(request: Request) {
     if (metadata.data.size) {
         headers.set('Content-Length', metadata.data.size);
     }
-    // Permite que o navegador faça streaming em partes (essencial para vídeos longos)
-    headers.set('Accept-Ranges', 'bytes'); 
+    headers.set('Accept-Ranges', 'bytes');
+    // Cache de 1 hora no browser, 24h no CDN/proxy
+    headers.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
 
     // Retornar o stream direto do Google para o cliente
     return new Response(response.data, {
