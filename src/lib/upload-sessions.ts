@@ -1,23 +1,28 @@
 /**
  * Armazena as sessões de upload resumable em memória no servidor.
  * Cada sessão tem a URL do Drive e o mimeType do arquivo.
- * Sessões são limpas automaticamente após 2 horas.
  */
 
 type Session = {
   uploadUrl: string;
   mimeType: string;
+  createdAt: number;
 };
 
 // Map global — persiste entre requests no mesmo processo Node
 export const uploadSessions = new Map<string, Session>();
 
-// Limpar sessões antigas a cada hora
-setInterval(() => {
-  // Não há timestamp aqui por simplicidade — o Drive expira a URL em ~24h
-  // Em produção com múltiplas instâncias, usar Redis
-  if (uploadSessions.size > 100) {
-    const keys = Array.from(uploadSessions.keys());
-    keys.slice(0, 50).forEach((k) => uploadSessions.delete(k));
+/**
+ * Limpa sessões antigas (mais de 2 horas).
+ * Chamado manualmente antes de criar novas sessões.
+ */
+export function cleanOldSessions() {
+  const now = Date.now();
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  
+  for (const [key, session] of uploadSessions.entries()) {
+    if (now - session.createdAt > TWO_HOURS) {
+      uploadSessions.delete(key);
+    }
   }
-}, 60 * 60 * 1000);
+}
