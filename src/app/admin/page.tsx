@@ -42,61 +42,83 @@ export default function AdminPage() {
     setUploading(true);
     setProgress(0);
     setError('');
-    setStatusMsg('Enviando arquivo...');
+    setStatusMsg('Preparando...');
 
-    const xhr = new XMLHttpRequest();
-
-    // Progresso real: browser → servidor → Drive (tudo em um pipeline)
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable) {
-        const pct = Math.round((event.loaded / event.total) * 100);
-        setProgress(pct);
-        if (pct < 100) {
-          setStatusMsg(`Enviando... ${pct}%`);
-        } else {
-          setStatusMsg('Processando no Google Drive...');
+    // Etapa 1: pedir URL de sessão ao servidor (< 1 segundo, sem timeout)
+    fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        withAudio,
+      }),
+    })
+      .then((r) => r.json())
+      .then(({ uploadUrl, error: err }) => {
+        if (err || !uploadUrl) {
+          setError(err || 'Falha ao iniciar upload');
+          setUploading(false);
+          return;
         }
-      }
-    });
 
-    xhr.addEventListener('load', () => {
-      setUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (data.success) {
-            setProgress(100);
-            setStatusMsg('');
-            fetchMedia();
-          } else {
-            setError(data.error || 'Erro no upload');
+        setStatusMsg('Enviando ao Google Drive...');
+
+        // Etapa 2: browser envia arquivo direto ao Drive via XHR
+        // Servidor não toca nos bytes — zero timeout no Render
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 100);
+            setProgress(pct);
+            setStatusMsg(pct < 100 ? `Enviando ao Drive... ${pct}%` : 'Finalizando...');
           }
-        } catch {
-          setError('Resposta inválida do servidor');
-        }
-      } else {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          setError(data.error || `Erro ${xhr.status}`);
-        } catch {
-          setError(`Erro ${xhr.status} no upload`);
-        }
-      }
-    });
+        });
 
-    xhr.addEventListener('error', () => {
-      setUploading(false);
-      setError('Falha de conexão durante o upload');
-    });
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            try {
+              const driveRes = JSON.parse(xhr.responseText);
+              const fileId = driveRes.id;
 
-    // Enviar arquivo como stream puro — sem FormData, sem buffer
-    // Metadados vão nos headers para o servidor não precisar parsear multipart
-    xhr.open('POST', '/api/upload');
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-    xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
-    xhr.setRequestHeader('x-file-size', String(file.size));
-    xhr.setRequestHeader('x-with-audio', withAudio ? 'true' : 'false');
-    xhr.send(file); // envia o File diretamente como stream
+              setStatusMsg('Configurando acesso...');
+
+              // Etapa 3: servidor define permissão pública (só fileId, < 1s)
+              fetch('/api/upload/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId }),
+              }).finally(() => {
+                setProgress(100);
+                setStatusMsg('');
+                setUploading(false);
+                fetchMedia();
+              });
+            } catch {
+              setUploading(false);
+              setError('Erro ao processar resposta do Drive');
+            }
+          } else {
+            setUploading(false);
+            setError(`Drive retornou erro ${xhr.status}`);
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          setUploading(false);
+          setError('Falha de conexão com o Google Drive');
+        });
+
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.send(file);
+      })
+      .catch(() => {
+        setUploading(false);
+        setError('Falha ao conectar com o servidor');
+      });
   };
 
   const handleDelete = async (media: Media) => {
