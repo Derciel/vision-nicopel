@@ -11,6 +11,12 @@ const nextConfig: NextConfig = {
       '0.0.0.0:3000',
     ],
   }),
+  // Aumentar limite de body para uploads de até 2GB
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2gb',
+    },
+  },
 } as any;
 
 export default nextConfig;

@@ -15,8 +15,9 @@ type Media = {
 export default function AdminPage() {
   const [mediaList, setMediaList] = useState<Media[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
-  const [withAudio, setWithAudio] = useState(false); // Nova flag para upload
+  const [withAudio, setWithAudio] = useState(false);
 
   useEffect(() => {
     fetchMedia();
@@ -32,47 +33,73 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    e.target.value = '';
+
     setUploading(true);
+    setUploadProgress(0);
     setError('');
 
     const formData = new FormData();
-    formData.append('file', e.target.files[0]);
-    formData.append('withAudio', withAudio.toString()); // Envia a flag
+    formData.append('file', file);
+    formData.append('withAudio', withAudio.toString());
 
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      
-      if (res.ok && data.success) {
-        fetchMedia();
-      } else {
-        setError(data.error || 'Erro no upload');
+    const xhr = new XMLHttpRequest();
+
+    // Progresso real do envio
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const pct = Math.round((event.loaded / event.total) * 100);
+        setUploadProgress(pct);
       }
-    } catch (err) {
-      console.error(err);
-      setError('Falha de conexão');
-    } finally {
+    });
+
+    xhr.addEventListener('load', () => {
       setUploading(false);
-      e.target.value = '';
-    }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            setUploadProgress(100);
+            fetchMedia();
+          } else {
+            setError(data.error || 'Erro no upload');
+          }
+        } catch {
+          setError('Resposta inválida do servidor');
+        }
+      } else {
+        setError(`Erro ${xhr.status}: falha no upload`);
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      setUploading(false);
+      setError('Falha de conexão durante o upload');
+    });
+
+    xhr.addEventListener('abort', () => {
+      setUploading(false);
+      setError('Upload cancelado');
+    });
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
   };
 
   const handleDelete = async (media: Media) => {
     if (!confirm('Deseja excluir esta mídia permanentemente?')) return;
-    
-    const identifier = media.id ? `id=${media.id}` : `file=${encodeURIComponent(media.name)}`;
-    
+
+    const identifier = media.id
+      ? `id=${media.id}`
+      : `file=${encodeURIComponent(media.name)}`;
+
     try {
-      const res = await fetch(`/api/media?${identifier}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/media?${identifier}`, { method: 'DELETE' });
       if (res.ok) {
-        setMediaList((prev) => prev.filter(m => m.url !== media.url));
+        setMediaList((prev) => prev.filter((m) => m.url !== media.url));
       }
     } catch (e) {
       console.error('Erro ao excluir:', e);
@@ -93,10 +120,10 @@ export default function AdminPage() {
 
       <div className={styles.optionsBar}>
         <label className={styles.audioOption}>
-          <input 
-            type="checkbox" 
-            checked={withAudio} 
-            onChange={(e) => setWithAudio(e.target.checked)} 
+          <input
+            type="checkbox"
+            checked={withAudio}
+            onChange={(e) => setWithAudio(e.target.checked)}
           />
           <span>🔊 Reproduzir Vídeos com áudio</span>
         </label>
@@ -105,39 +132,78 @@ export default function AdminPage() {
       <div className={styles.uploadSection}>
         <Upload size={48} color="var(--accent)" style={{ margin: '0 auto' }} />
         <p>Arraste arquivos aqui ou clique para selecionar</p>
-        <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>Suporte a Imagens (JPG, PNG, AVIF, JFIF) e Vídeos (MP4, WEBM, MOV)</p>
-        
-        <input 
-          type="file" 
-          className={styles.uploadInput} 
+        <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+          Suporte a Imagens (JPG, PNG, AVIF, JFIF) e Vídeos (MP4, WEBM, MOV) — até 2GB
+        </p>
+
+        <input
+          type="file"
+          className={styles.uploadInput}
           accept="image/*,video/mp4,video/webm,video/quicktime"
           onChange={handleUpload}
           disabled={uploading}
         />
-        {uploading && <div className={styles.loading}>Enviando arquivo... aguarde</div>}
+
+        {uploading && (
+          <div style={{ width: '100%', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.85rem', opacity: 0.8 }}>
+              <span>Enviando para o servidor...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '99px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${uploadProgress}%`,
+                  background: 'linear-gradient(90deg, var(--accent), #a78bfa)',
+                  borderRadius: '99px',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+            {uploadProgress === 100 && (
+              <p style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '6px', textAlign: 'center' }}>
+                Processando no Google Drive...
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
-      {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
-
+      {error && (
+        <div style={{ color: 'var(--danger)', marginBottom: '1rem', textAlign: 'center' }}>
+          {error}
+        </div>
+      )}
 
       <h2 className={styles.galleryTitle}>Mídias Ativas em Loop ({mediaList.length})</h2>
-      
+
       <div className={styles.grid}>
         {mediaList.map((media) => (
           <div key={media.url} className={styles.card}>
             {media.type === 'video' ? (
-              <video src={media.id ? `/api/stream?id=${media.id}` : media.url} className={styles.mediaThumbnail} muted loop onMouseOver={e => e.currentTarget.play()} onMouseOut={e => e.currentTarget.pause()} />
+              <video
+                src={media.id ? `/api/stream?id=${media.id}` : media.url}
+                className={styles.mediaThumbnail}
+                muted
+                loop
+                onMouseOver={(e) => e.currentTarget.play()}
+                onMouseOut={(e) => e.currentTarget.pause()}
+              />
             ) : (
-              <img src={media.id ? `/api/stream?id=${media.id}` : media.url} alt={media.name} className={styles.mediaThumbnail} />
+              <img
+                src={media.id ? `/api/stream?id=${media.id}` : media.url}
+                alt={media.name}
+                className={styles.mediaThumbnail}
+              />
             )}
-            
+
             <div className={styles.overlay}>
               <button className={styles.deleteBtn} onClick={() => handleDelete(media)}>
                 <Trash2 size={18} /> Excluir
               </button>
             </div>
-            
-            {/* Tag indicator */}
+
             <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.6)', padding: '5px 8px', borderRadius: '4px', display: 'flex', gap: '5px', fontSize: '0.8rem' }}>
               {media.type === 'video' ? <Video size={14} /> : <ImageIcon size={14} />}
               {media.type === 'video' ? 'Vídeo' : 'Imagem'}
