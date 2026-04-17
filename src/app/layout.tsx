@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "video.js/dist/video-js.css";
 
 export const metadata: Metadata = {
   title: "Vision - Media Loop Player",
