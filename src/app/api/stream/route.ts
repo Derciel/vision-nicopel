@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getDriveClient } from '@/lib/google-drive';
+import { getAccessToken, getDriveClient } from '@/lib/google-drive';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -11,35 +13,72 @@ export async function GET(request: Request) {
 
   try {
     const drive = getDriveClient();
-    
-    // Buscar metadados do arquivo para pegar o MimeType correto
-    const metadata = await drive.files.get({
-      fileId: fileId,
-      fields: 'mimeType, size, name'
+
+    // Buscar metadados
+    const meta = await drive.files.get({
+      fileId,
+      fields: 'mimeType,size,name',
     });
 
-    // Solicitar o arquivo como um stream de mídia (mais rápido)
-    const response = await drive.files.get(
-      { fileId: fileId, alt: 'media' },
-      { responseType: 'stream' }
+    const mimeType = meta.data.mimeType || 'application/octet-stream';
+    const totalSize = Number(meta.data.size || 0);
+
+    // Verificar se o cliente pediu um range (player de vídeo sempre pede)
+    const rangeHeader = request.headers.get('range');
+
+    // Calcular range
+    let start = 0;
+    let end = totalSize - 1;
+
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (match) {
+        start = parseInt(match[1]);
+        end = match[2] ? parseInt(match[2]) : Math.min(start + 5 * 1024 * 1024 - 1, totalSize - 1);
+      }
+    }
+
+    const chunkSize = end - start + 1;
+
+    // Buscar o trecho do arquivo diretamente da API do Drive usando Range header
+    const accessToken = await getAccessToken();
+    const driveRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Range: `bytes=${start}-${end}`,
+        },
+      }
     );
 
-    // Repassar os headers do Google para o navegador
-    const headers = new Headers();
-    headers.set('Content-Type', metadata.data.mimeType || 'video/mp4');
-    if (metadata.data.size) {
-        headers.set('Content-Length', metadata.data.size);
+    if (!driveRes.ok && driveRes.status !== 206) {
+      console.error('[stream] Drive retornou:', driveRes.status);
+      return NextResponse.json({ error: 'Falha ao buscar arquivo' }, { status: 500 });
     }
-    headers.set('Accept-Ranges', 'bytes');
-    // Cache de 1 hora no browser, 24h no CDN/proxy
-    headers.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
 
-    // Retornar o stream direto do Google para o cliente
-    return new Response(response.data, {
-      headers: headers,
+    const headers = new Headers();
+    headers.set('Content-Type', mimeType);
+    headers.set('Content-Length', String(chunkSize));
+    headers.set('Accept-Ranges', 'bytes');
+    headers.set('Cache-Control', 'public, max-age=3600');
+
+    // Se foi range request, responder com 206 Partial Content
+    if (rangeHeader && totalSize > 0) {
+      headers.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+      return new Response(driveRes.body, {
+        status: 206,
+        headers,
+      });
+    }
+
+    // Resposta completa (imagens ou primeira carga)
+    return new Response(driveRes.body, {
+      status: 200,
+      headers,
     });
   } catch (error: any) {
-    console.error('Erro no Stream do Drive:', error);
-    return NextResponse.json({ error: 'Falha ao transmitir vídeo' }, { status: 500 });
+    console.error('[stream] Erro:', error);
+    return NextResponse.json({ error: 'Falha ao transmitir arquivo' }, { status: 500 });
   }
 }

@@ -80,8 +80,28 @@ export default function AdminPage() {
         xhr.addEventListener('load', () => {
           if (xhr.status === 200 || xhr.status === 201) {
             try {
-              const driveRes = JSON.parse(xhr.responseText);
-              const fileId = driveRes.id;
+              const text = xhr.responseText.trim();
+              // Drive pode retornar body vazio em alguns casos — buscar fileId de outra forma
+              let fileId: string | null = null;
+
+              if (text) {
+                const driveRes = JSON.parse(text);
+                fileId = driveRes.id || driveRes.fileId || null;
+              }
+
+              if (!fileId) {
+                // Se não veio no body, tentar extrair do header Location
+                const location = xhr.getResponseHeader('Location') || '';
+                const match = location.match(/\/files\/([^?/]+)/);
+                fileId = match?.[1] || null;
+              }
+
+              if (!fileId) {
+                setUploading(false);
+                setError('Upload concluído mas fileId não retornado. Tente recarregar a página.');
+                fetchMedia(); // arquivo pode ter sido salvo mesmo assim
+                return;
+              }
 
               setStatusMsg('Configurando acesso...');
 
@@ -102,7 +122,7 @@ export default function AdminPage() {
             }
           } else {
             setUploading(false);
-            setError(`Drive retornou erro ${xhr.status}`);
+            setError(`Drive retornou erro ${xhr.status}: ${xhr.responseText.slice(0, 100)}`);
           }
         });
 

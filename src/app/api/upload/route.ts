@@ -36,6 +36,7 @@ export async function POST(req: Request) {
 
     // Criar sessão de upload resumable — servidor só faz isso, leva < 1s
     const initRes = await fetch(
+      // fields=id garante que o Drive retorna o fileId no body ao completar o upload
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id',
       {
         method: 'POST',
