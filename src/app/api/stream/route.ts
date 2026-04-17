@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 const metaCache = new Map<string, { mimeType: string; size: number; cachedAt: number }>();
 const META_TTL = 10 * 60 * 1000; // 10 minutos
 
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk — bom equilíbrio para 4K
+const CHUNK_SIZE = 15 * 1024 * 1024; // 15MB por chunk — melhor para alta taxa de bits do 4K
 
 async function getFileMeta(fileId: string) {
   const cached = metaCache.get(fileId);

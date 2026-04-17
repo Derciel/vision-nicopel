@@ -34,6 +34,8 @@ export async function POST(req: Request) {
         ? `${timestamp}__audio_on__${cleanName}`
         : `${timestamp}_${cleanName}`;
 
+    const origin = req.headers.get('origin') || '';
+
     // Criar sessão de upload resumable — servidor só faz isso, leva < 1s
     const initRes = await fetch(
       // fields=id garante que o Drive retorna o fileId no body ao completar o upload
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
           'X-Upload-Content-Type': mimeType,
           'X-Upload-Content-Length': String(fileSize),
+          ...(origin ? { Origin: origin } : {}),
         },
         body: JSON.stringify({
           name: finalName,
