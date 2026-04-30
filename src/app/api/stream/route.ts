@@ -2,13 +2,21 @@ import { getAccessToken, getDriveClient } from '@/lib/google-drive';
 
 export const dynamic = 'force-dynamic';
 
+interface FileMeta {
+  mimeType: string;
+  size: number;
+  chunkSize: number;
+  cachedAt: number;
+}
+
 // Cache simples de metadados para evitar chamada dupla ao Drive por request
-const metaCache = new Map<string, { mimeType: string; size: number; cachedAt: number }>();
+const metaCache = new Map<string, FileMeta>();
+
 const META_TTL = 10 * 60 * 1000; // 10 minutos
 
 const DEFAULT_CHUNK_SIZE = 10 * 1024 * 1024; // 10MB default
 
-async function getFileMeta(fileId: string) {
+async function getFileMeta(fileId: string): Promise<FileMeta> {
   const cached = metaCache.get(fileId);
   if (cached && Date.now() - cached.cachedAt < META_TTL) return cached;
 
