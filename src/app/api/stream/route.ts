@@ -6,19 +6,29 @@ export const dynamic = 'force-dynamic';
 const metaCache = new Map<string, { mimeType: string; size: number; cachedAt: number }>();
 const META_TTL = 10 * 60 * 1000; // 10 minutos
 
-const CHUNK_SIZE = 15 * 1024 * 1024; // 15MB por chunk — melhor para alta taxa de bits do 4K
+const DEFAULT_CHUNK_SIZE = 10 * 1024 * 1024; // 10MB default
 
 async function getFileMeta(fileId: string) {
   const cached = metaCache.get(fileId);
   if (cached && Date.now() - cached.cachedAt < META_TTL) return cached;
 
   const drive = getDriveClient();
-  const meta = await drive.files.get({ fileId, fields: 'mimeType,size' });
+  const meta = await drive.files.get({ fileId, fields: 'mimeType,size,name' });
+  
+  const name = meta.data.name || '';
+  let chunkSize = DEFAULT_CHUNK_SIZE;
+  
+  if (name.includes('__q_4k__')) chunkSize = 40 * 1024 * 1024;
+  else if (name.includes('__q_720__')) chunkSize = 5 * 1024 * 1024;
+  else if (name.includes('__q_1080__')) chunkSize = 15 * 1024 * 1024;
+
   const entry = {
     mimeType: meta.data.mimeType || 'application/octet-stream',
     size: Number(meta.data.size || 0),
+    chunkSize,
     cachedAt: Date.now(),
   };
+
   metaCache.set(fileId, entry);
 
   // Limpar cache antigo
@@ -41,23 +51,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { mimeType, size: totalSize } = await getFileMeta(fileId);
+    const { mimeType, size: totalSize, chunkSize: maxChunkSize } = await getFileMeta(fileId);
 
     const rangeHeader = request.headers.get('range');
     let start = 0;
-    let end = totalSize > 0 ? Math.min(CHUNK_SIZE - 1, totalSize - 1) : 0;
+    let end = totalSize > 0 ? Math.min(maxChunkSize - 1, totalSize - 1) : 0;
 
     if (rangeHeader) {
       const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
       if (match) {
         start = parseInt(match[1]);
         const reqEnd = match[2] ? parseInt(match[2]) : 0;
-        // Limitar chunk a CHUNK_SIZE para não travar vídeos grandes
+        // Limitar chunk a maxChunkSize para não travar vídeos grandes
         end = reqEnd > 0
-          ? Math.min(reqEnd, start + CHUNK_SIZE - 1, totalSize - 1)
-          : Math.min(start + CHUNK_SIZE - 1, totalSize - 1);
+          ? Math.min(reqEnd, start + maxChunkSize - 1, totalSize - 1)
+          : Math.min(start + maxChunkSize - 1, totalSize - 1);
       }
     }
+
+
 
     const chunkSize = end - start + 1;
     const accessToken = await getAccessToken();

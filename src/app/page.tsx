@@ -22,14 +22,31 @@ export default function Home() {
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const [globalMute, setGlobalMute] = useState(false);
+
   useEffect(() => {
     setMounted(true);
     fetchPlaylist();
-    const interval = setInterval(fetchPlaylist, REFRESH_INTERVAL_MS);
+    fetchConfig();
+    const interval = setInterval(() => {
+      fetchPlaylist();
+      fetchConfig();
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.isMuted !== undefined) setGlobalMute(data.isMuted);
+      }
+    } catch (e) {}
+  };
+
   const fetchPlaylist = async () => {
+
     try {
       const res = await fetch('/api/media');
       const data = await res.json();
@@ -57,7 +74,13 @@ export default function Home() {
 
   const unlockAudio = () => {
     setShowUnmuteHint(false);
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {
+        // Silencioso se falhar (alguns navegadores barram)
+      });
+    }
   };
+
 
   if (!mounted || playlist.length === 0) {
     return (
@@ -90,11 +113,12 @@ export default function Home() {
                 <div className="media-fg">
                   <VideoPlayer
                     src={src}
-                    muted={!media.withAudio}
+                    muted={globalMute || !media.withAudio}
                     onEnded={nextMedia}
                     onError={() => setTimeout(nextMedia, 1000)}
                     preload="auto"
                   />
+
                 </div>
               </Suspense>
             ) : (
