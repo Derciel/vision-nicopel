@@ -76,68 +76,47 @@ export default function Home() {
     >
       {playlist.map((media, index) => {
         const isActive = index === currentIndex;
-        // Vídeos usam URL direta do Drive — sem passar pelo servidor Render
-        // Isso elimina o gargalo de RAM e timeout
-        const videoSrc = `/api/stream?id=${media.id}`;
-        const imgSrc = `/api/stream?id=${media.id}`;
+        if (!isActive) return null; // Apenas renderiza o ativo para economizar memória no Silk
+
+        const src = `/api/stream?id=${media.id}`;
 
         return (
           <div
             key={media.id}
-            className={`fullscreen-media ${isActive ? 'active' : ''}`}
+            className="fullscreen-media active"
           >
             {media.type === 'video' ? (
               <Suspense fallback={null}>
-                {/* Background desfocado */}
-                {isActive && (
-                  <div className="media-bg" style={{ overflow: 'hidden' }}>
-                    <VideoPlayer
-                      src={videoSrc}
-                      muted={true}
-                      onEnded={() => {}}
-                      onError={() => {}}
-                      isBackground={true}
-                      preload="none"
-                    />
-                  </div>
-                )}
-                {/* Player principal */}
-                {isActive && (
-                  <div className="media-fg">
-                    <VideoPlayer
-                      src={videoSrc}
-                      muted={!media.withAudio}
-                      onEnded={nextMedia}
-                      onError={() => setTimeout(nextMedia, 1000)}
-                      preload="auto"
-                    />
-                  </div>
-                )}
+                <div className="media-fg">
+                  <VideoPlayer
+                    src={src}
+                    muted={!media.withAudio}
+                    onEnded={nextMedia}
+                    onError={() => setTimeout(nextMedia, 1000)}
+                    preload="auto"
+                  />
+                </div>
               </Suspense>
             ) : (
-              <>
-                <img src={imgSrc} className="media-bg" alt="" loading="lazy" />
-                <img
-                  src={imgSrc}
-                  className="media-fg"
-                  alt={media.name}
-                  loading={isActive ? 'eager' : 'lazy'}
-                />
-              </>
+              <img
+                src={src}
+                className="media-fg"
+                alt={media.name}
+                loading="eager"
+              />
             )}
           </div>
         );
       })}
 
-      {/* Pré-carrega metadados do próximo item */}
-      {nextItem.type === 'video' && (
+      {/* Pré-carrega metadados do próximo item de forma leve */}
+      {nextItem && (
         <link
-          rel="preload"
-          as="fetch"
+          rel="prefetch"
           href={`/api/stream?id=${nextItem.id}`}
-          crossOrigin="anonymous"
         />
       )}
+
 
       {showUnmuteHint && (
         <div style={{
