@@ -35,9 +35,11 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch(`${API_URL}/api/config`);
       if (res.ok) {
         const data = await res.json();
         if (data.isMuted !== undefined) setGlobalMute(data.isMuted);
@@ -46,9 +48,8 @@ export default function Home() {
   };
 
   const fetchPlaylist = async () => {
-
     try {
-      const res = await fetch('/api/media');
+      const res = await fetch(`${API_URL}/api/media`);
       const data = await res.json();
       if (data.files) {
         setPlaylist(prev =>
@@ -101,7 +102,7 @@ export default function Home() {
         const isActive = index === currentIndex;
         if (!isActive) return null; // Apenas renderiza o ativo para economizar memória no Silk
 
-        const src = `/api/stream?id=${media.id}`;
+        const src = `${API_URL}/api/stream?id=${media.id}`;
 
         return (
           <div
@@ -137,7 +138,7 @@ export default function Home() {
       {nextItem && (
         <link
           rel="prefetch"
-          href={`/api/stream?id=${nextItem.id}`}
+          href={`${API_URL}/api/stream?id=${nextItem.id}`}
         />
       )}
 
