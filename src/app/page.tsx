@@ -28,11 +28,27 @@ export default function Home() {
     setMounted(true);
     fetchPlaylist();
     fetchConfig();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPlaylist();
+        fetchConfig();
+      }
+    };
+
     const interval = setInterval(() => {
-      fetchPlaylist();
-      fetchConfig();
+      if (document.visibilityState === 'visible') {
+        fetchPlaylist();
+        fetchConfig();
+      }
     }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -61,17 +77,20 @@ export default function Home() {
     }
   };
 
-  const nextMedia = () => setCurrentIndex(prev => (prev + 1) % playlist.length);
+  const nextMedia = () => {
+    if (playlist.length <= 1) return; // Não faz nada se tiver apenas 1 item
+    setCurrentIndex(prev => (prev + 1) % playlist.length);
+  };
 
   // Timer para imagens
   useEffect(() => {
-    if (playlist.length === 0) return;
+    if (playlist.length <= 1) return;
     const media = playlist[currentIndex];
     if (media.type !== 'image') return;
+    
     const t = setTimeout(nextMedia, IMAGE_DURATION_MS);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, playlist]);
+  }, [currentIndex, playlist.length]); // Dependência limpa: só re-roda se o índice ou o tamanho mudar
 
   const unlockAudio = () => {
     setShowUnmuteHint(false);
