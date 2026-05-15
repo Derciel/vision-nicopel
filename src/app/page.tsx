@@ -55,7 +55,9 @@ export default function Home() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/config`);
+      const res = await fetch(`${API_URL}/api/config`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.isMuted !== undefined) setGlobalMute(data.isMuted);
@@ -65,7 +67,9 @@ export default function Home() {
 
   const fetchPlaylist = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/media`);
+      const res = await fetch(`${API_URL}/api/media`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       const data = await res.json();
       if (data.files) {
         setPlaylist(prev =>

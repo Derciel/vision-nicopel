@@ -32,7 +32,9 @@ export default function AdminPage() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/config`);
+      const res = await fetch(`${API_URL}/api/config`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.isMuted !== undefined) setGlobalMute(data.isMuted);
@@ -46,7 +48,10 @@ export default function AdminPage() {
     try {
       await fetch(`${API_URL}/api/config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify({ isMuted: newState }),
       });
     } catch (e) { console.error(e); }
@@ -54,7 +59,9 @@ export default function AdminPage() {
 
   const fetchMedia = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/media`);
+      const res = await fetch(`${API_URL}/api/media`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       const data = await res.json();
       if (data.files) setMediaList(data.files);
     } catch (e) {
@@ -81,7 +88,10 @@ export default function AdminPage() {
 
     fetch(`${API_URL}/api/upload`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
       body: JSON.stringify({
         fileName: nameWithMeta,
         mimeType: file.type || 'application/octet-stream',
@@ -131,7 +141,10 @@ export default function AdminPage() {
 
             fetch(`${API_URL}/api/upload/confirm`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+              },
               body: JSON.stringify({ fileId }),
             }).finally(() => {
               setUploading(false);
@@ -155,7 +168,10 @@ export default function AdminPage() {
   const handleDelete = async (media: Media) => {
     if (!confirm('Excluir permanentemente?')) return;
     try {
-      const res = await fetch(`${API_URL}/api/media?id=${media.id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_URL}/api/media?id=${media.id}`, { 
+        method: 'DELETE',
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (res.ok) fetchMedia();
     } catch (e) { console.error(e); }
   };
