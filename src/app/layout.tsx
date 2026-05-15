@@ -19,7 +19,20 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
-      <body>{children}</body>
+      <body style={{ margin: 0, padding: 0 }}>
+        {children}
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                console.log('Service Worker ativo!');
+              }).catch(function(err) {
+                console.error('Falha no SW:', err);
+              });
+            });
+          }
+        ` }} />
+      </body>
     </html>
   );
 }

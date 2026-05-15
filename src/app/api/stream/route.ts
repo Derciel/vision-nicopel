@@ -59,6 +59,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    console.log('🎞️ Solicitando stream para o arquivo ID:', fileId);
     const { mimeType, size: totalSize, chunkSize: maxChunkSize } = await getFileMeta(fileId);
 
     const rangeHeader = request.headers.get('range');

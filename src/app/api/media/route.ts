@@ -52,22 +52,39 @@ export async function DELETE(request: Request) {
 
     const drive = getDriveClient();
     
-    // Se receber o ID direto, deletamos o arquivo no Drive
     if (fileId) {
+      console.log('🗑️ Tentando deletar arquivo no Drive ID:', fileId);
       await drive.files.delete({ fileId });
-    } else {
-        // Se receber o nome, precisamos buscar o ID primeiro
+    } else if (filename) {
+        console.log('🔍 Buscando ID para o arquivo:', filename);
         const findRes = await drive.files.list({
             q: `name = '${filename}' and trashed = false`,
             fields: 'files(id)',
           });
-        const target = findRes.data.files[0];
-        if (target) await drive.files.delete({ fileId: target.id });
+        const target = findRes.data.files?.[0];
+        if (target?.id) {
+          await drive.files.delete({ fileId: target.id });
+        } else {
+          return NextResponse.json({ error: 'Arquivo não encontrado no Drive' }, { status: 404 });
+        }
     }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Drive API DELETE error:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao excluir o arquivo no Drive' }, { status: 500 });
+    // Se o erro for 404, significa que o arquivo já foi deletado ou não existe
+    if (error.code === 404) {
+        console.warn('⚠️ Arquivo não encontrado no Drive, considerando como deletado.');
+        return NextResponse.json({ success: true, alreadyDeleted: true });
+    }
+
+    console.error('❌ Erro detalhado no Drive API DELETE:', {
+      message: error.message,
+      code: error.code,
+      errors: error.errors
+    });
+    return NextResponse.json({ 
+      error: 'Erro ao excluir no Drive', 
+      details: error.message 
+    }, { status: 500 });
   }
 }
