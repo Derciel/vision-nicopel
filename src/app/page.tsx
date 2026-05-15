@@ -13,7 +13,7 @@ type Media = {
   withAudio: boolean;
 };
 
-const REFRESH_INTERVAL_MS = 10000;
+const REFRESH_INTERVAL_MS = 30000;
 const IMAGE_DURATION_MS = 7000;
 
 export default function Home() {

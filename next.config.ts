@@ -11,6 +11,19 @@ const nextConfig: NextConfig = {
       '0.0.0.0:3000',
     ],
   }),
+  // Configurar CORS para permitir acesso do Render
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
+        ],
+      },
+    ];
+  },
   // Aumentar limite de body para uploads de até 2GB
   experimental: {
     serverActions: {

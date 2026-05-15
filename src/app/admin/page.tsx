@@ -28,9 +28,11 @@ export default function AdminPage() {
     fetchConfig();
   }, []);
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch(`${API_URL}/api/config`);
       if (res.ok) {
         const data = await res.json();
         if (data.isMuted !== undefined) setGlobalMute(data.isMuted);
@@ -42,7 +44,7 @@ export default function AdminPage() {
     const newState = !globalMute;
     setGlobalMute(newState);
     try {
-      await fetch('/api/config', {
+      await fetch(`${API_URL}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isMuted: newState }),
@@ -52,7 +54,7 @@ export default function AdminPage() {
 
   const fetchMedia = async () => {
     try {
-      const res = await fetch('/api/media');
+      const res = await fetch(`${API_URL}/api/media`);
       const data = await res.json();
       if (data.files) setMediaList(data.files);
     } catch (e) {
@@ -77,7 +79,7 @@ export default function AdminPage() {
       + (withAudio ? '__audio_on__' : '__audio_off__')
       + (file.name.match(/\.[^/.]+$/)?.[0] || "");
 
-    fetch('/api/upload', {
+    fetch(`${API_URL}/api/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -127,7 +129,7 @@ export default function AdminPage() {
               return;
             }
 
-            fetch('/api/upload/confirm', {
+            fetch(`${API_URL}/api/upload/confirm`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ fileId }),
@@ -153,7 +155,7 @@ export default function AdminPage() {
   const handleDelete = async (media: Media) => {
     if (!confirm('Excluir permanentemente?')) return;
     try {
-      const res = await fetch(`/api/media?id=${media.id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_URL}/api/media?id=${media.id}`, { method: 'DELETE' });
       if (res.ok) fetchMedia();
     } catch (e) { console.error(e); }
   };
@@ -209,9 +211,9 @@ export default function AdminPage() {
         {mediaList.map((media) => (
           <div key={media.id} className={styles.card}>
             {media.type === 'video' ? (
-              <video src={`/api/stream?id=${media.id}`} className={styles.mediaThumbnail} muted loop />
+              <video src={`${API_URL}/api/stream?id=${media.id}`} className={styles.mediaThumbnail} muted loop />
             ) : (
-              <img src={`/api/stream?id=${media.id}`} className={styles.mediaThumbnail} alt="" />
+              <img src={`${API_URL}/api/stream?id=${media.id}`} className={styles.mediaThumbnail} alt="" />
             )}
             <div className={styles.overlay}>
               <button className={styles.deleteBtn} onClick={() => handleDelete(media)}><Trash2 size={18} /></button>
